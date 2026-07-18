@@ -1,0 +1,63 @@
+# =============================================================================
+# Macro Cockpit — Docker Compose
+#
+# 使い方(リポジトリ直下から。Makefile のターゲット経由が簡単):
+#   make docker-build   # 両イメージをビルド(web + fetcher)
+#   make docker-fetch   # 1回だけ取得(ワンショット。常駐しない = SPEC §3)
+#   make docker-up      # web をバックグラウンド起動 -> http://localhost:3000
+#   make docker-down    # 停止・後片付け
+#
+# 直接叩く場合はいずれも:
+#   docker compose -f docker/docker-compose.yml <cmd>
+#
+# ボリューム/パスは「このファイルの位置(docker/)」からの相対。
+#   ../data   = リポジトリ直下 data/(唯一の蓄積データ)
+#   ../config = リポジトリ直下 config/(regime.yaml)
+#   ../.env   = リポジトリ直下 .env(FRED_API_KEY 等。fetch 前に用意しておく)
+# =============================================================================
+
+# -f docker/docker-compose.yml で起動してもプロジェクト名が「docker」にならない
+# ように明示する(他リポジトリの同名構成との衝突・不明瞭なコンテナ名を回避)。
+name: macro-cockpit
+
+services:
+  # --- ダッシュボード(Next.js)。DB と regime.yaml を「読むだけ」 ---------------
+  web:
+    build:
+      context: ..
+      dockerfile: docker/web.Dockerfile
+    image: macro-cockpit-web
+    ports:
+      - "3000:3000"
+    volumes:
+      # web は蓄積データを読み取り専用でマウントする(書き込みは fetcher だけ)。
+      - ../data:/app/data:ro
+      # regime.yaml も読むだけ。ホスト側を編集してブラウザ再読込で反映される
+      # (web の WORKDIR は /app/web。lib/panels.ts は ../config/regime.yaml を読む)。
+      - ../config:/app/config:ro
+    environment:
+      MACRO_DB_PATH: /app/data/macro.sqlite
+      TZ: Asia/Tokyo
+    restart: unless-stopped
+
+  # --- 取得バッチ(Python/uv)。常駐しない(profiles で up 対象から外す)-----------
+  fetcher:
+    build:
+      context: ..
+      dockerfile: docker/fetcher.Dockerfile
+    image: macro-cockpit-fetcher
+    # FRED_API_KEY / ESTAT_APP_ID / IB_* を環境変数として渡す(.env はイメージに入れない)。
+    env_file:
+      - ../.env
+    volumes:
+      # fetcher だけが書き込む(UPSERT)。読み書き可でマウント。
+      - ../data:/app/data
+    environment:
+      MACRO_DB_PATH: /app/data/macro.sqlite
+      TZ: Asia/Tokyo
+    # Linux ホストで、コンテナから host.docker.internal 経由でホストの
+    # TWS / IB Gateway に届くようにする(.env の IB_HOST=host.docker.internal と整合)。
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    # SPEC §3(常駐なし)。up では起動せず、docker compose run --rm fetcher で1回実行する。
+    profiles: ["fetch"]

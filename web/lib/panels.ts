@@ -99,6 +99,26 @@ const PANEL_DEFS: PanelDef[] = [
   { key: "trade", title: "貿易収支", kind: "chain", candidates: [{ seriesId: "CUSTOMS:TRADE" }], color: GREEN, suffix: "億円", decimals: 0, deltaMode: "pt", deltaUnit: "億円", deltaDecimals: 0, signed: true, includeZero: true },
 ];
 
+// ---- カテゴリ別セクション(表示グループ) ----------------------------------
+// §6.1の注記「パネルの並び順は実装時に見やすさ優先で入れ替えてよい」に基づき、
+// 25パネルを6カテゴリへ再編成して表示する。パネル定義(PANEL_DEFS)・データ処理は
+// 変更せず、表示順のみここで定義する。全パネルが漏れなく重複なく属することは
+// lib/panels.test.ts で検証する。
+
+export type PanelGroup = { title: string; keys: string[] };
+
+export const PANEL_GROUPS: PanelGroup[] = [
+  { title: "インフレ・金利", keys: ["us_cpi", "jp_cpi", "bei", "ust10", "real", "rate_diff"] },
+  { title: "通貨・中銀", keys: ["usdjpy", "dxy", "fed_bs", "boj_bs", "mb", "callon"] },
+  { title: "実物資産", keys: ["gold", "wti", "copper", "natgas"] },
+  { title: "株式・リスク", keys: ["n225", "spx", "vix", "hy"] },
+  { title: "日本・財政", keys: ["jgb30", "realwage", "trade"] },
+  { title: "不動産", keys: ["reit", "cs"] },
+];
+
+/** グループ整合性テスト用: 全パネルのkey一覧(定義順)。 */
+export const PANEL_KEYS: string[] = PANEL_DEFS.map((d) => d.key);
+
 const ALL_SERIES_IDS = [
   "FRED:CPIAUCSL",
   "FRED:FPCPITOTLZGJPN",

@@ -1,12 +1,13 @@
 import IndicatorPanel from "@/components/IndicatorPanel";
 import RegimeStrip from "@/components/RegimeStrip";
-import { getDashboardData } from "@/lib/panels";
+import { getDashboardData, PANEL_GROUPS } from "@/lib/panels";
 
 // リクエスト毎にDBを読む(ビルド時静的化を禁止)
 export const dynamic = "force-dynamic";
 
 export default function Home() {
   const { updatedAt, panels, regime } = getDashboardData();
+  const byKey = new Map(panels.map((p) => [p.key, p]));
 
   return (
     <main className="min-h-screen bg-[#111217] px-3 py-3 text-[#F5F6F8]">
@@ -19,10 +20,27 @@ export default function Home() {
 
       <RegimeStrip data={regime} />
 
-      <div className="mt-3 grid grid-cols-1 gap-2 md:grid-cols-4">
-        {panels.map((p) => (
-          <IndicatorPanel key={p.key} panel={p} />
-        ))}
+      {/* カテゴリ別セクション(§6.1「並び順は見やすさ優先で入れ替えてよい」)。
+          見出しはGrafanaのrowヘッダの流儀: 装飾なし・右側へヘアラインを伸ばす */}
+      <div className="mt-3">
+        {PANEL_GROUPS.map((g) => {
+          const groupPanels = g.keys
+            .map((k) => byKey.get(k))
+            .filter((p) => p !== undefined);
+          return (
+            <section key={g.title} className="mt-4 first:mt-0">
+              <h2 className="mb-1.5 flex items-center gap-3 text-[12px] font-medium tracking-wide text-[#9DA5B8]">
+                {g.title}
+                <span aria-hidden className="flex-1 border-t border-[#2C3235]" />
+              </h2>
+              <div className="grid grid-cols-1 gap-2 md:grid-cols-4">
+                {groupPanels.map((p) => (
+                  <IndicatorPanel key={p.key} panel={p} />
+                ))}
+              </div>
+            </section>
+          );
+        })}
       </div>
     </main>
   );

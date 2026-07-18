@@ -44,6 +44,47 @@ make dev     # ダッシュボード開発サーバ (http://localhost:3000)
 取得結果は `fetch_log` テーブルに記録される。DB パスは環境変数 `MACRO_DB_PATH` で上書きできる。
 yfinance はレート制限で一部系列が一時的に失敗することがある。その場合は少し待って `make fetch` を再実行すればよい(失敗系列だけが `fetch_log` に `error` として残り、他系列とページ全体は無傷)。
 
+## Docker での起動
+
+ローカルに uv / Node を入れずに、Docker だけで取得(fetcher)とダッシュボード(web)を動かせる。設計は §3 の「常駐なし」思想に合わせ、**取得は毎回ワンショット**(`docker compose run --rm fetcher`)、**常駐するのは web だけ**とする(fetcher は Compose の `profiles: ["fetch"]` により `up` の対象外)。
+
+### 前提
+
+- **ホストに Docker(Docker Engine + Compose v2)がインストールされていること。** これらのコマンドはホスト側で実行する(dev コンテナ内には docker CLI は無い)。
+- `.env` を用意しておく(未作成なら `cp .env.example .env` して `FRED_API_KEY` を設定)。fetcher はこの `.env` を `env_file` として読み込む(イメージには焼き込まない)。
+- 構成: **web** は `data/`(SQLite)と `config/regime.yaml` を読み取り専用でマウントして表示するだけ。**fetcher** だけが `data/` に書き込む(UPSERT)。DB パスは両サービスとも環境変数 `MACRO_DB_PATH=/app/data/macro.sqlite`、タイムゾーンは `TZ=Asia/Tokyo`。
+
+### 手順
+
+```sh
+make docker-build   # web + fetcher の両イメージをビルド
+make docker-fetch   # 全系列を1回取得し data/macro.sqlite へ UPSERT(ワンショット)
+make docker-up      # ダッシュボード(web)をバックグラウンド起動
+# ブラウザで http://localhost:3000 を開く
+make docker-down    # 停止・後片付け
+```
+
+`make docker-*` は内部で `docker compose -f docker/docker-compose.yml ...` を呼ぶだけなので、直接叩いてもよい。`make docker-fetch` は冪等(UPSERT)で、何度実行しても `observations` の行数は増えない。web は DB が無くても落ちない設計なので、`make docker-fetch` の前に `make docker-up` してもよい(全パネルが「取得待ち」で表示され、取得後にリロードで反映される)。
+
+`config/regime.yaml` はホスト側を編集してブラウザを再読込するだけで反映される(web はボリュームで読むだけ。ビルド・再起動不要)。
+
+**所有権の注意(Linuxホスト):** fetcher コンテナは root で動くため、`make docker-fetch` が新規作成するファイル(初回の `data/macro.sqlite` 等)はホスト側で root 所有になる。その後ホスト側で非 Docker の `make fetch` / `make init` を併用する場合は、先に `sudo chown -R $USER data/` で所有権を戻すこと(Docker だけで運用する場合は不要)。
+
+### cron からの定期取得
+
+`make docker-up` で常駐した web はそのままに、取得だけを1日1回 cron で回す。ワンショットなので `run --rm` で都度起動・破棄する:
+
+```cron
+# 分 時 日 月 曜日  コマンド(/path/to/macro-cockpit はリポジトリの絶対パスに置換)
+MM HH * * * cd /path/to/macro-cockpit && docker compose -f docker/docker-compose.yml run --rm fetcher >> "$HOME/macro-cockpit-fetch.log" 2>&1
+```
+
+時刻は取引システムの稼働に影響しない時間帯(例: 早朝メンテ時間帯)を選ぶこと(SPEC §4.4)。非 Docker 版のテンプレートは [`scripts/crontab.example`](./scripts/crontab.example)。
+
+### IB(TWS / IB Gateway)接続の注意
+
+fetcher コンテナからホスト上で稼働する TWS / IB Gateway に接続するため、Compose で `extra_hosts: "host.docker.internal:host-gateway"` を設定してある(Linux ホストでもコンテナからホストへ届く)。IB を一次ソースにする場合は `.env` の **`IB_HOST=host.docker.internal`** を設定すること(既定の `127.0.0.1` はコンテナ内の自分自身を指してしまい届かない)。`IB_PORT` / `IB_CLIENT_ID` は §4.4 のガードレール通り、取引システムと重複しない専用値を設定する。IB 未設定・接続不可でも yfinance フォールバックで全系列取得できる(SPEC §4.4)。
+
 ## 系列表(Phase 1 + 2A + 2B・確定版 — この表が系列定義の正)
 
 系列定義の単一の正は [`fetcher/src/fetcher/registry.py`](./fetcher/src/fetcher/registry.py)。

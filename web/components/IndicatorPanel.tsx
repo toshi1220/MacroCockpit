@@ -44,10 +44,16 @@ export default function IndicatorPanel({ panel: p }: { panel: PanelData }) {
 
   return (
     <section className="flex flex-col rounded-lg border border-[#2C3235] bg-[#181B1F] px-2.5 py-2">
-      <div className="flex items-start justify-between gap-2">
-        <span className="text-[11px] leading-4 text-[#9DA5B8]">
+      <div className="flex items-baseline justify-between gap-2">
+        {/* タイトルはSPEC§6.4では11px・サブテキスト色だが、視認性向上の
+            ユーザー要望により13px・font-medium・明色(#DCE1EA)へ意図的に変更 */}
+        <span className="text-[13px] font-medium leading-5 text-[#DCE1EA]">
           {p.title}
-          {p.note && <span className="ml-1 text-[9px]">({p.note})</span>}
+          {p.note && (
+            <span className="ml-1 text-[9px] font-normal text-[#9DA5B8]">
+              ({p.note})
+            </span>
+          )}
         </span>
         {hasData && p.delta && (
           <span className="text-right text-[11px] leading-4">

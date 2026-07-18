@@ -1,0 +1,46 @@
+# =============================================================================
+# Docker ビルドコンテキスト除外(コンテキストはリポジトリ直下 = docker-compose の context: ..)
+#
+# 目的:
+#  - 秘密情報(.env)を絶対にイメージへ入れない
+#  - 蓄積データ(data/。macro.sqlite)をイメージへ入れない(実行時にボリュームで渡す)
+#  - ホスト側の node_modules / .next / .venv 等を排除し、コンテナ内で作り直す
+#    (ホストとコンテナで OS/ABI が異なりうるため。ビルドの再現性は lockfile が担保)
+# =============================================================================
+
+# --- 秘密情報(最重要。イメージへ絶対に入れない)---
+.env
+**/.env
+**/.env.*
+!.env.example
+
+# --- 蓄積データ(実行時にボリュームでマウントする)---
+/data
+**/*.sqlite
+**/*.sqlite-wal
+**/*.sqlite-shm
+
+# --- Node / Next.js(コンテナ内で npm ci / next build する)---
+**/node_modules
+**/.next
+web/tsconfig.tsbuildinfo
+
+# --- Python(コンテナ内で uv sync する)---
+**/.venv
+**/__pycache__
+**/*.pyc
+**/.pytest_cache
+
+# --- VCS / エディタ / ローカルツール状態 ---
+.git
+.gitignore
+.github
+.claude
+.devcontainer
+
+# --- Docker 関連自身(ビルドに不要)---
+docker
+.dockerignore
+
+# --- 開発補助(イメージに不要)---
+scripts
