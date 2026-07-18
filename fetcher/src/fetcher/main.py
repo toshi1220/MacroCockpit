@@ -19,7 +19,7 @@ from dotenv import find_dotenv, load_dotenv
 
 from fetcher import store
 from fetcher.registry import SERIES
-from fetcher.sources import fred
+from fetcher.sources import fred, yahoo
 
 logging.basicConfig(
     level=logging.INFO,
@@ -27,9 +27,10 @@ logging.basicConfig(
 )
 logger = logging.getLogger("fetcher")
 
-# source 名 -> 取得関数。Phase 1 で 'yahoo' を追加する。
+# source 名 -> 取得関数。
 FETCHERS = {
     "fred": fred.fetch,
+    "yahoo": yahoo.fetch,
 }
 
 _API_KEY_RE = re.compile(r"api_key=[^&\s]+")

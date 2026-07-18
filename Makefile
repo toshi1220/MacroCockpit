@@ -6,13 +6,13 @@
 init:
 	cd fetcher && uv sync
 	cd fetcher && uv run python -c "from fetcher.store import connect; from fetcher.main import resolve_db_path; connect(resolve_db_path()).close()"
+	cd web && npm install
 
 fetch:
 	cd fetcher && uv run python -m fetcher.main
 
 dev:
-	@echo "web/ (Next.js) は Phase 1 のため未実装です。'make fetch' でデータ取得のみ実行できます。"
-	@exit 0
+	cd web && npm run dev
 
 test:
 	cd fetcher && uv run pytest
