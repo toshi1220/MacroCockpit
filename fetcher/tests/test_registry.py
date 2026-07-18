@@ -8,10 +8,14 @@ from __future__ import annotations
 
 from fetcher.registry import SERIES
 
-_EXPECTED_COUNT = 21
-_VALID_SOURCES = {"fred", "yahoo", "ib"}
+_EXPECTED_COUNT = 28
+_VALID_SOURCES = {
+    "fred", "yahoo", "ib",
+    # Phase 2B: 日本公式ソース
+    "estat", "estat_dashboard", "mof", "boj", "customs",
+}
 _VALID_FREQS = {"D", "W", "M", "A"}
-# Phase 2 で一次ソースを IB に切り替えた系列(series_id はデータ継続性のため据え置き)
+# Phase 2A で一次ソースを IB に切り替えた系列(series_id はデータ継続性のため据え置き)
 _IB_SERIES_IDS = {"YF:GC=F", "YF:CL=F", "YF:HG=F", "YF:NG=F", "YF:JPY=X"}
 
 
@@ -37,10 +41,19 @@ def test_freqs_are_valid():
 def test_series_id_prefix_matches_source():
     """series_id の接頭辞と source が対応している(FRED:->fred, YF:->yahoo)。
 
-    Phase 2 で source='ib' になった旧 Yahoo 系列は、蓄積データの継続性のため
+    Phase 2A で source='ib' になった旧 Yahoo 系列は、蓄積データの継続性のため
     series_id を 'YF:' のまま据え置いている(README 注記)。
     """
-    prefix = {"fred": "FRED:", "yahoo": "YF:", "ib": "YF:"}
+    prefix = {
+        "fred": "FRED:",
+        "yahoo": "YF:",
+        "ib": "YF:",
+        "estat": "ESTAT:",
+        "estat_dashboard": "ESTATDB:",
+        "mof": "MOF:",
+        "boj": "BOJ:",
+        "customs": "CUSTOMS:",
+    }
     for s in SERIES:
         assert s.series_id.startswith(prefix[s.source]), s.series_id
 

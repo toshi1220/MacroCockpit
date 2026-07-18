@@ -26,7 +26,7 @@ from dotenv import find_dotenv, load_dotenv
 
 from fetcher import store
 from fetcher.registry import SERIES
-from fetcher.sources import fred, yahoo
+from fetcher.sources import boj, customs, estat, estat_dashboard, fred, mof, yahoo
 
 # ib は ib_async の導入不備(ImportError)が MVP 系列(fred/yahoo)の取得を
 # 道連れにしないよう分離してimportする。失敗時は全IB系列がフォールバックする。
@@ -49,14 +49,23 @@ logger = logging.getLogger("fetcher")
 FETCHERS = {
     "fred": fred.fetch,
     "yahoo": yahoo.fetch,
+    "estat": estat.fetch,
+    "estat_dashboard": estat_dashboard.fetch,
+    "mof": mof.fetch,
+    "boj": boj.fetch,
+    "customs": customs.fetch,
 }
 
+# fetch_log(DB)へ永続化されうる秘密情報のマスク。requests の通信例外は URL を
+# 含むため、FRED の api_key と e-Stat の appId(いずれもクエリパラメータ)を伏せる。
 _API_KEY_RE = re.compile(r"api_key=[^&\s]+")
+_APP_ID_RE = re.compile(r"appId=[^&\s]+", re.IGNORECASE)
 
 
 def sanitize(message: str) -> str:
-    """fetch_log・ログ出力に載る文字列から api_key=... を伏せる(SPEC§10)。"""
-    return _API_KEY_RE.sub("api_key=***", message)
+    """fetch_log・ログ出力に載る文字列から api_key=... / appId=... を伏せる(SPEC§10)。"""
+    masked = _API_KEY_RE.sub("api_key=***", message)
+    return _APP_ID_RE.sub("appId=***", masked)
 
 
 def resolve_db_path() -> Path:

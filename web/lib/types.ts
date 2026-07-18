@@ -14,6 +14,8 @@ export type PanelData = {
   prefix: string;
   suffix: string;
   decimals: number;
+  signed: boolean; // 正値にも + を付ける(貿易収支など)
+  includeZero: boolean; // チャートY軸に必ず0を含める(負値をまたぐ系列)
 };
 
 export type RegimeCellData = {

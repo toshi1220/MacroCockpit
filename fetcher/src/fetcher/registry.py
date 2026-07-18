@@ -3,16 +3,23 @@
 系列の追加・変更はこのファイルだけで行う。Phase 1 では SERIES に
 エントリを追加するだけで取得対象が増える構造にしてある。
 
-series_id は 'FRED:<ref>' / 'YF:<ref>' の形式。source は 'fred' | 'yahoo' | 'ib'。
-freq は 'D' | 'W' | 'M' | 'A'(SPEC のスキーマコメントは D/W/M だが、
-生きた月次日本CPIが FRED に存在しないため年次代替 FPCPITOTLZGJPN を採用し
-'A' を許容する。経緯は README.md 参照)。
+series_id は 'FRED:<ref>' / 'YF:<ref>' 等の '<接頭辞>:<ref>' 形式。
+source は 'fred' | 'yahoo' | 'ib' | 'estat' | 'estat_dashboard' | 'mof' |
+'boj' | 'customs'。freq は 'D' | 'W' | 'M' | 'A'(SPEC のスキーマコメントは
+D/W/M だが、生きた月次日本CPIが FRED に存在しないため年次代替
+FPCPITOTLZGJPN を採用し 'A' を許容する。経緯は README.md 参照)。
 
-Phase 2 で先物・FXの一次ソースを IB に切り替えた(SPEC §4.4)。該当5系列は
+Phase 2A で先物・FXの一次ソースを IB に切り替えた(SPEC §4.4)。該当5系列は
 source='ib' だが、**series_id はデータ継続性のため 'YF:...' のまま変更しない**
 (observations に蓄積済みの系列IDを維持する。README の注記参照)。
 fallback_source / fallback_ref があれば、IB 接続・取得の失敗時に main が
 そのソースへ自動フォールバックする。
+
+Phase 2B で日本公式ソース(e-Stat API / 統計ダッシュボードAPI / 財務省
+国債金利CSV / 日銀 stat-search CSV / 税関 貿易統計CSV)の7系列を追加した。
+これらにフォールバックは設定しない(公式が一次。失敗時は 'error' 記録で他系列
+継続。web 側でパネル単位の代替表示を行う)。source_ref の形式は各 sources/
+モジュールの docstring 参照。
 """
 
 from __future__ import annotations
@@ -219,5 +226,67 @@ SERIES: list[Series] = [
         freq="D",
         fallback_source="yahoo",
         fallback_ref="JPY=X",
+    ),
+    # --- Phase 2B: 日本公式ソース(フォールバックなし。失敗は 'error' で他系列継続)---
+    # e-Stat API: 日本CPI 月次(2020年基準・全国・総合指数)
+    Series(
+        series_id="ESTAT:CPI_JP",
+        source="estat",
+        source_ref="0003427113:1:0001:00000",  # statsDataId:cdTab:cdCat01:cdArea
+        name_ja="日本CPI(月次)",
+        unit="指数",
+        freq="M",
+    ),
+    # 統計ダッシュボードAPI: 実質賃金指数(毎月勤労統計、2020年=100、月次・原数値)
+    Series(
+        series_id="ESTATDB:REALWAGE",
+        source="estat_dashboard",
+        source_ref="0302030201010090010",
+        name_ja="実質賃金指数",
+        unit="指数",
+        freq="M",
+    ),
+    # 財務省 国債金利CSV: JGB 10年 / 30年(日次)
+    Series(
+        series_id="MOF:JGB10Y",
+        source="mof",
+        source_ref="jgb:10",
+        name_ja="日本10年金利(日次)",
+        unit="%",
+        freq="D",
+    ),
+    Series(
+        series_id="MOF:JGB30Y",
+        source="mof",
+        source_ref="jgb:30",
+        name_ja="日本30年金利",
+        unit="%",
+        freq="D",
+    ),
+    # 日銀 stat-search CSV: マネタリーベース平残(月次) / 無担保コールO/N(日次)
+    Series(
+        series_id="BOJ:MB",
+        source="boj",
+        source_ref="md01_m_1:MD01'MABS1AN11",  # file:datacode
+        name_ja="マネタリーベース",
+        unit="億円",
+        freq="M",
+    ),
+    Series(
+        series_id="BOJ:CALLON",
+        source="boj",
+        source_ref="fm01_d_1:FM01'STRDCLUCON",
+        name_ja="無担保コールO/N",
+        unit="%",
+        freq="D",
+    ),
+    # 税関 貿易統計CSV: 貿易収支(通関ベース、月次、輸出−輸入を億円で保存)
+    Series(
+        series_id="CUSTOMS:TRADE",
+        source="customs",
+        source_ref="d41ma",
+        name_ja="貿易収支",
+        unit="億円",
+        freq="M",
     ),
 ]

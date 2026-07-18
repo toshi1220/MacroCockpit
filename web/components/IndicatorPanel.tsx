@@ -35,6 +35,7 @@ export default function IndicatorPanel({ panel: p }: { panel: PanelData }) {
 
   const fmt = (v: number) =>
     p.prefix +
+    (p.signed && v > 0 ? "+" : "") +
     v.toLocaleString("en-US", {
       minimumFractionDigits: p.decimals,
       maximumFractionDigits: p.decimals,
@@ -81,7 +82,14 @@ export default function IndicatorPanel({ panel: p }: { panel: PanelData }) {
                   tickFormatter={(d: string) => d.slice(0, 7)}
                 />
                 <YAxis
-                  domain={["auto", "auto"]}
+                  domain={
+                    p.includeZero
+                      ? [
+                          (dataMin: number) => Math.min(0, dataMin),
+                          (dataMax: number) => Math.max(0, dataMax),
+                        ]
+                      : ["auto", "auto"]
+                  }
                   tick={{ fontSize: 9, fill: SUB }}
                   tickLine={false}
                   axisLine={false}
