@@ -3,10 +3,16 @@
 系列の追加・変更はこのファイルだけで行う。Phase 1 では SERIES に
 エントリを追加するだけで取得対象が増える構造にしてある。
 
-series_id は 'FRED:<ref>' / 'YF:<ref>' の形式。source は 'fred' | 'yahoo'。
+series_id は 'FRED:<ref>' / 'YF:<ref>' の形式。source は 'fred' | 'yahoo' | 'ib'。
 freq は 'D' | 'W' | 'M' | 'A'(SPEC のスキーマコメントは D/W/M だが、
 生きた月次日本CPIが FRED に存在しないため年次代替 FPCPITOTLZGJPN を採用し
 'A' を許容する。経緯は README.md 参照)。
+
+Phase 2 で先物・FXの一次ソースを IB に切り替えた(SPEC §4.4)。該当5系列は
+source='ib' だが、**series_id はデータ継続性のため 'YF:...' のまま変更しない**
+(observations に蓄積済みの系列IDを維持する。README の注記参照)。
+fallback_source / fallback_ref があれば、IB 接続・取得の失敗時に main が
+そのソースへ自動フォールバックする。
 """
 
 from __future__ import annotations
@@ -17,11 +23,13 @@ from dataclasses import dataclass
 @dataclass(frozen=True)
 class Series:
     series_id: str      # DB上の一意ID 例: 'FRED:DGS10'
-    source: str         # 'fred' | 'yahoo'
-    source_ref: str     # ソース側のシリーズID 例: 'DGS10'
+    source: str         # 'fred' | 'yahoo' | 'ib'
+    source_ref: str     # ソース側のシリーズID 例: 'DGS10', 'ContFuture:GC:COMEX'
     name_ja: str        # 表示名(日本語)
     unit: str | None    # '%', '円', 'USD' など
     freq: str           # 'D' | 'W' | 'M' | 'A'
+    fallback_source: str | None = None  # 一次ソース失敗時のソース 例: 'yahoo'
+    fallback_ref: str | None = None     # フォールバック側のシリーズID 例: 'GC=F'
 
 
 # SPEC §4.1 の全系列。要確認だった系列は FRED API で実在検証済み。
@@ -127,39 +135,49 @@ SERIES: list[Series] = [
         unit="指数",
         freq="M",
     ),
-    # --- Yahoo Finance ---
+    # --- IB 一次(フォールバック: Yahoo Finance)---
+    # series_id は蓄積データの継続性のため 'YF:' 接頭辞のまま(README 注記)。
     Series(
         series_id="YF:GC=F",
-        source="yahoo",
-        source_ref="GC=F",
+        source="ib",
+        source_ref="ContFuture:GC:COMEX",
         name_ja="金先物",
         unit="USD",
         freq="D",
+        fallback_source="yahoo",
+        fallback_ref="GC=F",
     ),
     Series(
         series_id="YF:CL=F",
-        source="yahoo",
-        source_ref="CL=F",
+        source="ib",
+        source_ref="ContFuture:CL:NYMEX",
         name_ja="WTI原油",
         unit="USD",
         freq="D",
+        fallback_source="yahoo",
+        fallback_ref="CL=F",
     ),
     Series(
         series_id="YF:HG=F",
-        source="yahoo",
-        source_ref="HG=F",
+        source="ib",
+        source_ref="ContFuture:HG:COMEX",
         name_ja="銅先物",
         unit="USD",
         freq="D",
+        fallback_source="yahoo",
+        fallback_ref="HG=F",
     ),
     Series(
         series_id="YF:NG=F",
-        source="yahoo",
-        source_ref="NG=F",
+        source="ib",
+        source_ref="ContFuture:NG:NYMEX",
         name_ja="天然ガス",
         unit="USD",
         freq="D",
+        fallback_source="yahoo",
+        fallback_ref="NG=F",
     ),
+    # --- Yahoo Finance ---
     Series(
         series_id="YF:^N225",
         source="yahoo",
@@ -194,10 +212,12 @@ SERIES: list[Series] = [
     ),
     Series(
         series_id="YF:JPY=X",
-        source="yahoo",
-        source_ref="JPY=X",
+        source="ib",
+        source_ref="Forex:USDJPY",
         name_ja="USD/JPY(補助)",
         unit="円",
         freq="D",
+        fallback_source="yahoo",
+        fallback_ref="JPY=X",
     ),
 ]

@@ -55,6 +55,34 @@ def test_upsert_replaces_value(tmp_path):
     assert count == 1
 
 
+def test_upsert_replace_false_keeps_existing_values(tmp_path):
+    """replace=False は既存日付を保持し、未収録日だけ埋める(IB優先。SPEC §8)。"""
+    conn = store.connect(tmp_path / "macro.sqlite")
+    series = _series()
+    store.upsert_series(conn, series)
+
+    # 一次ソース(IB相当)の値を先に蓄積
+    store.upsert_observations(
+        conn, series.series_id, pd.DataFrame({"date": ["2020-01-01"], "value": [100.0]})
+    )
+    # フォールバック相当: 既存日 + 新規日を replace=False で書く
+    n = store.upsert_observations(
+        conn,
+        series.series_id,
+        pd.DataFrame({"date": ["2020-01-01", "2020-01-02"], "value": [999.0, 2.0]}),
+        replace=False,
+    )
+
+    assert n == 1  # 実際に書けたのは新規日の1行だけ
+    rows = dict(
+        conn.execute(
+            "SELECT date, value FROM observations WHERE series_id=?",
+            (series.series_id,),
+        )
+    )
+    assert rows == {"2020-01-01": 100.0, "2020-01-02": 2.0}
+
+
 def test_log_fetch_records(tmp_path):
     """log_fetch が fetch_log に1行記録する。"""
     conn = store.connect(tmp_path / "macro.sqlite")

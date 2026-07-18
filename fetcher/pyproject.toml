@@ -1,13 +1,14 @@
 [project]
 name = "fetcher"
 version = "0.0.0"
-description = "Macro Cockpit data fetcher (FRED / Yahoo -> SQLite)"
+description = "Macro Cockpit data fetcher (FRED / Yahoo / IB -> SQLite)"
 requires-python = ">=3.12"
 dependencies = [
     "pandas",
     "requests",
     "python-dotenv",
     "yfinance",
+    "ib_async",
 ]
 
 [dependency-groups]

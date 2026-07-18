@@ -1,7 +1,12 @@
 """SQLite 入出力・スキーマ初期化。
 
-書き込みはすべて UPSERT (INSERT OR REPLACE) で冪等。何度実行しても
-重複・破損しない。派生値(YoY 等)は保存しない。
+書き込みはすべて UPSERT で冪等。何度実行しても重複・破損しない。
+派生値(YoY 等)は保存しない。
+
+一次ソースの書き込みは INSERT OR REPLACE(最新値で更新)、フォールバック
+ソースの書き込みは INSERT OR IGNORE(既存日付を上書きしない)。これにより
+IB 障害日にフォールバック(yfinance)が走っても、蓄積済みの IB 値は保持
+される(SPEC §8「系列の重複期間は公式ソース/IBを優先」)。
 """
 
 from __future__ import annotations
@@ -16,7 +21,7 @@ import pandas as pd
 SCHEMA = """
 CREATE TABLE IF NOT EXISTS series (
   series_id TEXT PRIMARY KEY,   -- 例: 'FRED:DGS10'
-  source    TEXT NOT NULL,      -- 'fred' | 'yahoo'
+  source    TEXT NOT NULL,      -- 'fred' | 'yahoo' | 'ib'(Phase 2 で拡張)
   name_ja   TEXT NOT NULL,
   unit      TEXT,
   freq      TEXT NOT NULL       -- 'D' | 'W' | 'M'
@@ -57,8 +62,16 @@ def upsert_series(conn: sqlite3.Connection, series) -> None:
     conn.commit()
 
 
-def upsert_observations(conn: sqlite3.Connection, series_id: str, df: pd.DataFrame) -> int:
-    """observations に INSERT OR REPLACE する。挿入した行数を返す。"""
+def upsert_observations(
+    conn: sqlite3.Connection, series_id: str, df: pd.DataFrame, *, replace: bool = True
+) -> int:
+    """observations へ書き込み、書き込んだ(影響した)行数を返す。
+
+    replace=True  … INSERT OR REPLACE。一次ソース用(最新値で上書き)。
+    replace=False … INSERT OR IGNORE。フォールバックソース用。既存の
+                    (series_id, date) は保持し、未収録の日付だけを埋める。
+                    一次ソース(IB等)で蓄積済みの値を格下げしないため。
+    """
     rows = [
         (
             series_id,
@@ -67,12 +80,14 @@ def upsert_observations(conn: sqlite3.Connection, series_id: str, df: pd.DataFra
         )
         for row in df.itertuples(index=False)
     ]
-    conn.executemany(
-        "INSERT OR REPLACE INTO observations (series_id, date, value) VALUES (?, ?, ?)",
+    verb = "INSERT OR REPLACE" if replace else "INSERT OR IGNORE"
+    cur = conn.executemany(
+        f"{verb} INTO observations (series_id, date, value) VALUES (?, ?, ?)",
         rows,
     )
     conn.commit()
-    return len(rows)
+    # OR IGNORE では既存日付はスキップされるため、rowcount(実際に書けた行数)を返す。
+    return cur.rowcount
 
 
 def log_fetch(conn: sqlite3.Connection, series_id: str, status: str, message: str | None) -> None:
