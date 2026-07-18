@@ -1,0 +1,82 @@
+# =============================================================================
+# Macro Cockpit — レジーム・ストリップ判定ルール(SPEC §6.3 / §6.4 / §8 Phase 3)
+#
+# このファイルが判定ルールの「単一の正」。コードを触らずここを編集すれば
+# ストリップの判定が変わる(保存してブラウザをリロードするだけでよい)。
+#
+# ★ 以下は初期値である。SPEC §1 の運用の前提シナリオ
+#   (スタグフレーション/財政ドミナンス/円希薄化)の監視として設計してあるが、
+#   ユーザーが自分の相場観に合わせてこの YAML を編集する前提。
+#
+# ルールの型(rule):
+#   direction 型: { type: direction, expected: up|down, lookback_months: n(省略時 defaults) }
+#     直近値と「lookback ヶ月前以前の最も近い観測」を符号付き差分で比較し、
+#     実際の方向が expected と一致 → 整合(緑 #73BF69)
+#     逆                         → 逆行(赤 #FF7383)
+#     変化が flat_epsilon 未満・データ欠損 → 中立(グレー #2C3235)
+#   threshold 型: { type: threshold, warn_above: x, warn_below: y }(少なくとも一方を指定)
+#     直近値が警戒域(warn_above 超 / warn_below 未満)→ 逆行(赤)
+#     警戒域でなければ → 整合(緑)、データ欠損 → 中立(グレー)
+#
+# series はソース優先チェーン: 先頭からデータが存在する最初の候補で判定する。
+#   transform: raw(生値・既定)| yoy(前年同月比%。表示層で計算・DB非保存)
+# =============================================================================
+
+defaults:
+  lookback_months: 3       # direction 型の既定の比較期間(ヶ月)
+  flat_epsilon_rel: 0.001  # 「変化なし」とみなす相対幅(基準値の0.1%。ゼロ近傍は0.001pt)
+
+scenario:
+  name: "スタグフレーション/財政ドミナンス/円希薄化"
+  min_aligned: 6           # 整合セルがこの数以上なら「シナリオ継続」、未満なら「要注意」
+
+cells:
+  - key: us_cpi
+    label: 米CPI
+    series:
+      - { id: "FRED:CPIAUCSL", transform: yoy }
+    rule: { type: direction, expected: up }    # スタグフレーション: インフレ再加速が整合
+
+  - key: jp_cpi
+    label: 日CPI
+    series:
+      - { id: "ESTAT:CPI_JP", transform: yoy } # e-Stat 月次を優先
+      - { id: "FRED:FPCPITOTLZGJPN" }          # 年次フォールバック(値が既に前年比%)
+    rule: { type: direction, expected: up }    # スタグフレーション/円希薄化
+
+  - key: jgb10y
+    label: JGB10Y
+    series:
+      - { id: "MOF:JGB10Y" }                   # 財務省 日次を優先
+      - { id: "FRED:IRLTLT01JPM156N" }         # FRED(OECD)月次フォールバック
+    rule: { type: direction, expected: up }    # 財政ドミナンス: 長期金利上昇が整合
+
+  - key: usdjpy
+    label: USDJPY
+    series:
+      - { id: "FRED:DEXJPUS" }
+    rule: { type: direction, expected: up }    # 円希薄化: 円安が整合
+
+  - key: gold
+    label: 金
+    series:
+      - { id: "YF:GC=F" }
+    rule: { type: direction, expected: up }    # 実物資産インフレが整合
+
+  - key: fed_bs
+    label: Fed B/S
+    series:
+      - { id: "FRED:WALCL" }
+    rule: { type: direction, expected: up }    # 緩和再拡大が整合
+
+  - key: boj_bs
+    label: 日銀B/S
+    series:
+      - { id: "FRED:JPNASSETS" }
+    rule: { type: direction, expected: up }    # 緩和再拡大が整合
+
+  - key: vix
+    label: VIX
+    series:
+      - { id: "YF:^VIX" }
+    rule: { type: threshold, warn_above: 30 }  # リスクイベント検知(方向は問わない)

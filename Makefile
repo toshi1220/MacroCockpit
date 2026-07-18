@@ -16,3 +16,4 @@ dev:
 
 test:
 	cd fetcher && uv run pytest
+	cd web && npm test

@@ -1,5 +1,15 @@
+import fs from "node:fs";
+import path from "node:path";
 import { getLastFetchTs, getObservationsMap, type Observation } from "./db";
-import type { ChangeData, PanelData, RegimeCellData } from "./types";
+import {
+  computeYoY,
+  evaluateRegime,
+  lastOnOrBefore,
+  parseRegimeConfig,
+  shiftMonths,
+  type RegimeConfig,
+} from "./regime";
+import type { ChangeData, PanelData, RegimeStripData } from "./types";
 
 const GREEN = "#73BF69"; // 主系列(価格・指数・B/S系)
 const BLUE = "#5794F2"; // 金利・リスク系
@@ -120,54 +130,8 @@ const ALL_SERIES_IDS = [
   "CUSTOMS:TRADE",
 ];
 
-// ---- 日付ヘルパー ----------------------------------------------------------
-
-function shiftMonths(iso: string, n: number): string {
-  const [y, m, d] = iso.split("-").map(Number);
-  const total = y * 12 + (m - 1) + n;
-  const ny = Math.floor(total / 12);
-  const nm = (total % 12) + 1;
-  const daysInMonth = new Date(Date.UTC(ny, nm, 0)).getUTCDate();
-  const nd = Math.min(d, daysInMonth);
-  return `${ny}-${String(nm).padStart(2, "0")}-${String(nd).padStart(2, "0")}`;
-}
-
-/** date 以前で最も近い観測を二分探索で返す。 */
-function lastOnOrBefore(obs: Observation[], date: string): Observation | null {
-  let lo = 0;
-  let hi = obs.length - 1;
-  let ans = -1;
-  while (lo <= hi) {
-    const mid = (lo + hi) >> 1;
-    if (obs[mid].date <= date) {
-      ans = mid;
-      lo = mid + 1;
-    } else {
-      hi = mid - 1;
-    }
-  }
-  return ans >= 0 ? obs[ans] : null;
-}
-
-// ---- 派生系列(DBには保存しない・表示層で計算) ----------------------------
-
-/**
- * 月次系列の前年同月比%。ソースにより日付が月初/月末で揺れるため
- * 「YYYY-MM」キーで前年同月を引く(月次前提: 1ヶ月1観測)。
- */
-function computeYoY(obs: Observation[]): Observation[] {
-  const byMonth = new Map<string, number>();
-  for (const o of obs) byMonth.set(o.date.slice(0, 7), o.value);
-  const out: Observation[] = [];
-  for (const o of obs) {
-    const prevKey = `${String(Number(o.date.slice(0, 4)) - 1).padStart(4, "0")}${o.date.slice(4, 7)}`;
-    const prev = byMonth.get(prevKey);
-    if (prev !== undefined && prev !== 0) {
-      out.push({ date: o.date, value: (o.value / prev - 1) * 100 });
-    }
-  }
-  return out;
-}
+// 日付ヘルパー(shiftMonths / lastOnOrBefore)と派生系列(computeYoY)は
+// レジーム判定エンジンと共有のため lib/regime.ts に定義(単一実装)。
 
 /**
  * ソース優先チェーンの解決: データが存在する最初の候補を採用する。
@@ -305,19 +269,50 @@ function buildPanel(def: PanelDef, obsMap: Map<string, Observation[]>): PanelDat
   };
 }
 
-// ---- レジーム・ストリップ(§6.3 MVP: 静的表示のみ) ------------------------
+// ---- レジーム・ストリップ(§6.3 / §8 Phase 3: ルールエンジン) --------------
 
-function regimeCell(label: string, obs: Observation[]): RegimeCellData {
-  if (obs.length === 0) return { label, dir: "flat" };
-  const latest = obs[obs.length - 1];
-  const ref = lastOnOrBefore(obs, shiftMonths(latest.date, -3));
-  if (!ref) return { label, dir: "flat" };
-  // 比率(latest/ref - 1)は基準値が負のとき符号が反転する(JGBマイナス金利期・
-  // 日CPIデフレ期に実データあり)ため、符号付き差分で判定する
-  const diff = latest.value - ref.value;
-  const flatEps = 0.001 * Math.max(Math.abs(ref.value), 1); // 価格系は±0.1%、ゼロ近傍の金利系は±0.001pt
-  if (Math.abs(diff) < flatEps) return { label, dir: "flat" };
-  return { label, dir: diff > 0 ? "up" : "down" };
+/** 設定エラー時の退避表示に使うMVP相当の8セル(§6.3 のコア指標)。 */
+const REGIME_FALLBACK_LABELS = [
+  "米CPI",
+  "日CPI",
+  "JGB10Y",
+  "USDJPY",
+  "金",
+  "Fed B/S",
+  "日銀B/S",
+  "VIX",
+];
+
+/** 判定ルールの単一の正: リポジトリ直下 config/regime.yaml(web/ の1つ上)。 */
+function resolveRegimeConfigPath(): string {
+  if (process.env.MACRO_REGIME_CONFIG) return process.env.MACRO_REGIME_CONFIG;
+  return path.resolve(process.cwd(), "..", "config", "regime.yaml");
+}
+
+/**
+ * regime.yaml の読み込み+検証。YAML欠如・パース失敗・スキーマ不正のいかなる
+ * 場合も例外を外へ漏らさず null を返す(ページを絶対に落とさないため)。
+ */
+function loadRegimeConfig(): RegimeConfig | null {
+  try {
+    return parseRegimeConfig(fs.readFileSync(resolveRegimeConfigPath(), "utf-8"));
+  } catch {
+    return null;
+  }
+}
+
+/** 設定エラー時の退避表示: 全セル中立グレー+「ルール設定エラー」小表示。 */
+function regimeFallback(): RegimeStripData {
+  return {
+    cells: REGIME_FALLBACK_LABELS.map((label) => ({
+      key: label,
+      label,
+      dir: "flat" as const,
+      state: "neutral" as const,
+    })),
+    summary: null,
+    error: "ルール設定エラー",
+  };
 }
 
 // ---- エントリポイント ------------------------------------------------------
@@ -325,22 +320,31 @@ function regimeCell(label: string, obs: Observation[]): RegimeCellData {
 export function getDashboardData(): {
   updatedAt: string | null;
   panels: PanelData[];
-  regime: RegimeCellData[];
+  regime: RegimeStripData;
 } {
-  const obsMap = getObservationsMap(ALL_SERIES_IDS);
+  // ユーザーが regime.yaml に独自系列を書いても評価できるよう、
+  // パネル定義と設定ファイルの系列IDの和集合を1接続でまとめて読む
+  const config = loadRegimeConfig();
+  const seriesIds = new Set(ALL_SERIES_IDS);
+  if (config) {
+    for (const cell of config.cells) {
+      for (const ref of cell.series) seriesIds.add(ref.id);
+    }
+  }
+  const obsMap = getObservationsMap([...seriesIds]);
   const panels = PANEL_DEFS.map((def) => buildPanel(def, obsMap));
 
-  // セル構成8つは不変。日CPI・JGB10Yはソース優先チェーンで解決
-  const regime: RegimeCellData[] = [
-    regimeCell("米CPI", computeYoY(obsMap.get("FRED:CPIAUCSL") ?? [])),
-    regimeCell("日CPI", resolveChain(JP_CPI_CHAIN, obsMap)?.obs ?? []),
-    regimeCell("JGB10Y", resolveChain(JGB10Y_CHAIN, obsMap)?.obs ?? []),
-    regimeCell("USDJPY", obsMap.get("FRED:DEXJPUS") ?? []),
-    regimeCell("金", obsMap.get("YF:GC=F") ?? []),
-    regimeCell("Fed B/S", obsMap.get("FRED:WALCL") ?? []),
-    regimeCell("日銀B/S", obsMap.get("FRED:JPNASSETS") ?? []),
-    regimeCell("VIX", obsMap.get("YF:^VIX") ?? []),
-  ];
+  let regime: RegimeStripData;
+  if (config) {
+    const result = evaluateRegime(config, obsMap);
+    regime = {
+      cells: result.cells.map((c) => ({ key: c.key, label: c.label, dir: c.dir, state: c.state })),
+      summary: { text: result.summary.text, name: result.summary.name },
+      error: null,
+    };
+  } else {
+    regime = regimeFallback();
+  }
 
   const ts = getLastFetchTs();
   let updatedAt: string | null = null;

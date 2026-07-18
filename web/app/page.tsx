@@ -17,7 +17,7 @@ export default function Home() {
         </span>
       </header>
 
-      <RegimeStrip cells={regime} />
+      <RegimeStrip data={regime} />
 
       <div className="mt-3 grid grid-cols-1 gap-2 md:grid-cols-4">
         {panels.map((p) => (

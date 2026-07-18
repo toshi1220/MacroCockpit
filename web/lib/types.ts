@@ -19,6 +19,19 @@ export type PanelData = {
 };
 
 export type RegimeCellData = {
+  key: string; // regime.yaml cells[].key(一意。React key に使う)
   label: string;
-  dir: "up" | "down" | "flat";
+  dir: "up" | "down" | "flat"; // ▲▼(実際の方向)
+  state: "aligned" | "contrary" | "neutral"; // 色(整合=緑/逆行=赤/中立=グレー)
+};
+
+export type RegimeSummaryData = {
+  text: string; // 例: 「シナリオ継続 7/8」「要注意 4/8(逆行2)」
+  name: string; // シナリオ名(ツールチップ表示用)
+};
+
+export type RegimeStripData = {
+  cells: RegimeCellData[];
+  summary: RegimeSummaryData | null; // 設定エラー時は null
+  error: string | null; // 設定エラー時の小表示(例: 「ルール設定エラー」)
 };

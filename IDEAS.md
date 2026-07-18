@@ -10,3 +10,7 @@
 ## Phase 3 以降の候補メモ(Phase 2B 実装中に判明)
 
 - (c) **日CPIコア系列:** 生鮮食品を除く総合(cdCat01=`0161`)・生鮮食品及びエネルギーを除く総合(cdCat01=`0178`)は、`ESTAT:CPI_JP` と同じ statsDataId `0003427113` に対し **cdCat01 を差し替えるだけ**で取得できる(取得層 `sources/estat.py` は改修不要、registry へ系列追加のみ)。インフレの基調判定(総合はエネルギー・生鮮のノイズが乗る)に有用。Phase 3 以降で `ESTAT:CPI_JP_CORE` / `ESTAT:CPI_JP_CORECORE` として追加する候補。
+
+## Phase 3 任意項目(未実装のまま退避)
+
+- (d) **VPS配備・朝の通知(Phase 3任意項目、未実装):** SPEC §8 Phase 3 の任意項目。VPS へ配備して常時稼働させ、朝に「シナリオ継続/要注意」の summary を通知(メール等)で届ける。Phase 3 本体はルールエンジン+テスト+cronテンプレート(scripts/crontab.example)まで実装済みで、これらは未実装のまま退避。
