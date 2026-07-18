@@ -1,0 +1,18 @@
+# Accumulated data (keep the directory, ignore its contents)
+data/*
+!data/.gitkeep
+
+# Secrets
+.env
+
+# Python
+.venv
+__pycache__/
+*.pyc
+.pytest_cache/
+
+# Node / Next.js (Phase 1)
+node_modules/
+
+# Claude Code local state
+.claude/

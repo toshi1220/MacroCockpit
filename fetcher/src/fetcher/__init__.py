@@ -1,0 +1,1 @@
+"""Macro Cockpit fetcher package."""
