@@ -3,7 +3,11 @@
 import {
   Area,
   AreaChart,
+  Bar,
+  BarChart,
   CartesianGrid,
+  Cell,
+  ReferenceLine,
   ResponsiveContainer,
   Tooltip,
   XAxis,
@@ -14,6 +18,7 @@ import type { ChangeData, PanelData } from "@/lib/types";
 const UP = "#73BF69";
 const DOWN = "#FF7383";
 const SUB = "#9DA5B8";
+const WARN = "#F2CC0C";
 
 function changeColor(dir: 1 | 0 | -1): string {
   return dir > 0 ? UP : dir < 0 ? DOWN : SUB;
@@ -42,8 +47,82 @@ export default function IndicatorPanel({ panel: p }: { panel: PanelData }) {
     }) +
     p.suffix;
 
+  // 意味のある閾値の参照線のみ(点線1px+右端9pxラベル)。
+  // 0線(solid)は罫線 #2C3235 よりやや明るく見えるようサブテキスト色の実線を減光して使う
+  const referenceLines = p.referenceLines.map((r) => (
+    <ReferenceLine
+      key={`${r.y}-${r.label ?? "zero"}`}
+      y={r.y}
+      stroke={r.solid ? SUB : (r.color ?? SUB)}
+      strokeOpacity={r.solid ? 0.45 : 0.6}
+      strokeWidth={1}
+      strokeDasharray={r.solid ? undefined : "4 3"}
+      ifOverflow="extendDomain"
+      label={
+        r.label
+          ? {
+              value: r.label,
+              position: "insideTopRight" as const,
+              fontSize: 9,
+              fill: r.color ?? SUB,
+              fillOpacity: 0.85,
+            }
+          : undefined
+      }
+    />
+  ));
+
+  const grid = (
+    <CartesianGrid stroke="#2C3235" strokeDasharray="3 3" vertical={false} />
+  );
+  const xAxis = (
+    <XAxis
+      dataKey="date"
+      tick={{ fontSize: 9, fill: SUB }}
+      tickLine={false}
+      axisLine={false}
+      minTickGap={60}
+      tickFormatter={(d: string) => d.slice(0, 7)}
+    />
+  );
+  const yAxis = (
+    <YAxis
+      domain={
+        p.includeZero
+          ? [
+              (dataMin: number) => Math.min(0, dataMin),
+              (dataMax: number) => Math.max(0, dataMax),
+            ]
+          : ["auto", "auto"]
+      }
+      tick={{ fontSize: 9, fill: SUB }}
+      tickLine={false}
+      axisLine={false}
+      width={42}
+      tickFormatter={(v: number) =>
+        v.toLocaleString("en-US", { maximumFractionDigits: p.decimals })
+      }
+    />
+  );
+  const tooltip = (cursor: object) => (
+    <Tooltip
+      isAnimationActive={false}
+      cursor={cursor}
+      content={({ active, payload, label }) =>
+        active && payload && payload.length ? (
+          <div className="rounded border border-[#2C3235] bg-[#181B1F] px-2 py-1 text-[11px]">
+            <div className="text-[#9DA5B8]">{String(label)}</div>
+            <div className="font-mono text-[#F5F6F8] [font-variant-numeric:tabular-nums]">
+              {fmt(Number(payload[0].value))}
+            </div>
+          </div>
+        ) : null
+      }
+    />
+  );
+
   return (
-    <section className="flex flex-col rounded-lg border border-[#2C3235] bg-[#181B1F] px-2.5 py-2">
+    <section className="flex flex-col rounded-lg border border-[#2C3235] bg-[#181B1F] px-3 py-2.5">
       <div className="flex items-baseline justify-between gap-2">
         {/* タイトルはSPEC§6.4では11px・サブテキスト色だが、視認性向上の
             ユーザー要望により13px・font-medium・明色(#DCE1EA)へ意図的に変更 */}
@@ -64,72 +143,83 @@ export default function IndicatorPanel({ panel: p }: { panel: PanelData }) {
 
       {hasData ? (
         <>
-          <div className="mt-0.5 font-mono text-[22px] leading-7 text-[#F5F6F8] [font-variant-numeric:tabular-nums]">
-            {p.latest}
+          <div className="mt-0.5 flex items-center gap-2">
+            <span className="font-mono text-[24px] leading-8 text-[#F5F6F8] [font-variant-numeric:tabular-nums]">
+              {p.latest}
+            </span>
+            {p.warn && (
+              // 警戒状態はステータス色+テキストラベル併記(色単独にしない)
+              <span
+                className="rounded-[4px] px-1.5 py-px text-[11px] leading-4"
+                style={{ color: WARN, backgroundColor: "rgba(242, 204, 12, 0.12)" }}
+              >
+                警戒
+              </span>
+            )}
           </div>
 
-          <div className="mt-1 h-24 w-full">
+          {p.range52 && (
+            // 52週レンジバー: 現在値の位置計器(左端=52週安値、右端=52週高値)
+            <div className="mt-1">
+              <div className="relative h-1 rounded-[2px] bg-[#2C3235]">
+                <span
+                  className="absolute top-0 h-full w-0.5 -translate-x-1/2 rounded-[1px]"
+                  style={{
+                    left: `${p.range52.pos * 100}%`,
+                    backgroundColor: p.color,
+                  }}
+                />
+              </div>
+              <div className="mt-0.5 flex justify-between font-mono text-[9px] leading-3 text-[#9DA5B8] [font-variant-numeric:tabular-nums]">
+                <span>{p.range52.minText}</span>
+                <span>{p.range52.maxText}</span>
+              </div>
+            </div>
+          )}
+
+          <div className="mt-1 h-[106px] w-full">
             <ResponsiveContainer width="100%" height="100%">
-              <AreaChart
-                data={p.points}
-                margin={{ top: 2, right: 2, bottom: 0, left: 0 }}
-              >
-                <CartesianGrid
-                  stroke="#2C3235"
-                  strokeDasharray="3 3"
-                  vertical={false}
-                />
-                <XAxis
-                  dataKey="date"
-                  tick={{ fontSize: 9, fill: SUB }}
-                  tickLine={false}
-                  axisLine={false}
-                  minTickGap={60}
-                  tickFormatter={(d: string) => d.slice(0, 7)}
-                />
-                <YAxis
-                  domain={
-                    p.includeZero
-                      ? [
-                          (dataMin: number) => Math.min(0, dataMin),
-                          (dataMax: number) => Math.max(0, dataMax),
-                        ]
-                      : ["auto", "auto"]
-                  }
-                  tick={{ fontSize: 9, fill: SUB }}
-                  tickLine={false}
-                  axisLine={false}
-                  width={42}
-                  tickFormatter={(v: number) =>
-                    v.toLocaleString("en-US", { maximumFractionDigits: p.decimals })
-                  }
-                />
-                <Tooltip
-                  isAnimationActive={false}
-                  cursor={{ stroke: "#2C3235" }}
-                  content={({ active, payload, label }) =>
-                    active && payload && payload.length ? (
-                      <div className="rounded border border-[#2C3235] bg-[#181B1F] px-2 py-1 text-[11px]">
-                        <div className="text-[#9DA5B8]">{String(label)}</div>
-                        <div className="font-mono text-[#F5F6F8] [font-variant-numeric:tabular-nums]">
-                          {fmt(Number(payload[0].value))}
-                        </div>
-                      </div>
-                    ) : null
-                  }
-                />
-                <Area
-                  type="monotone"
-                  dataKey="value"
-                  stroke={p.color}
-                  strokeWidth={1.5}
-                  fill={p.color}
-                  fillOpacity={0.12}
-                  dot={false}
-                  activeDot={{ r: 2, fill: p.color, stroke: "none" }}
-                  isAnimationActive={false}
-                />
-              </AreaChart>
+              {p.chartType === "bar" ? (
+                // 極性を持つ月次フロー: 正=緑/負=ロゼのフラットなバー(0基線)
+                <BarChart
+                  data={p.points}
+                  margin={{ top: 2, right: 2, bottom: 0, left: 0 }}
+                  barCategoryGap="25%"
+                >
+                  {grid}
+                  {xAxis}
+                  {yAxis}
+                  {tooltip({ fill: "#2C3235", fillOpacity: 0.4 })}
+                  {referenceLines}
+                  <Bar dataKey="value" isAnimationActive={false}>
+                    {p.points.map((pt) => (
+                      <Cell key={pt.date} fill={pt.value >= 0 ? UP : DOWN} />
+                    ))}
+                  </Bar>
+                </BarChart>
+              ) : (
+                <AreaChart
+                  data={p.points}
+                  margin={{ top: 2, right: 2, bottom: 0, left: 0 }}
+                >
+                  {grid}
+                  {xAxis}
+                  {yAxis}
+                  {tooltip({ stroke: "#2C3235" })}
+                  {referenceLines}
+                  <Area
+                    type="monotone"
+                    dataKey="value"
+                    stroke={p.color}
+                    strokeWidth={1.5}
+                    fill={p.color}
+                    fillOpacity={0.12}
+                    dot={false}
+                    activeDot={{ r: 2, fill: p.color, stroke: "none" }}
+                    isAnimationActive={false}
+                  />
+                </AreaChart>
+              )}
             </ResponsiveContainer>
           </div>
 

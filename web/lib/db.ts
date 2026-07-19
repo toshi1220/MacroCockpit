@@ -62,6 +62,48 @@ export function getObservationsMap(
   }, empty);
 }
 
+export type FetchHealth = { ok: number; error: number; total: number };
+
+/**
+ * 最新fetchバッチ(最大ts近傍30分)の系列別 ok/error 集計。
+ * ts は '+00:00' 付きISOのため日時比較はJS側で行う(SQLiteのdatetime()と
+ * 文字列比較すると 'T' 区切りの行が全件マッチする罠がある)。
+ * 同一系列が同バッチに複数回現れた場合は最新の1行のみ数える。
+ */
+export function getFetchHealth(): FetchHealth | null {
+  return withDb((db) => {
+    const rows = db
+      .prepare(
+        "SELECT ts, series_id, status FROM fetch_log ORDER BY ts DESC LIMIT 500"
+      )
+      .all() as { ts: string; series_id: string; status: string }[];
+    if (rows.length === 0) return null;
+    const maxT = new Date(rows[0].ts).getTime();
+    if (Number.isNaN(maxT)) return null;
+    const WINDOW_MS = 30 * 60 * 1000;
+    const latestBySeries = new Map<string, string>();
+    for (const r of rows) {
+      const t = new Date(r.ts).getTime();
+      if (Number.isNaN(t) || maxT - t > WINDOW_MS) continue;
+      // rows は ts 降順なので最初に出会った行がその系列の最新
+      if (!latestBySeries.has(r.series_id)) latestBySeries.set(r.series_id, r.status);
+    }
+    let ok = 0;
+    for (const status of latestBySeries.values()) {
+      if (status === "ok") ok++;
+    }
+    // 分母は fetch_log 全体の既知系列数。最新バッチの窓(30分)から漏れた系列も
+    // 分母に残るため、部分バッチ(途中killや30分超のrun)が「n/28 ok」の
+    // n < 28 として可視化される(窓内だけを母数にすると欠落が隠れる)
+    const totalRow = db
+      .prepare("SELECT COUNT(DISTINCT series_id) AS n FROM fetch_log")
+      .get() as { n: number } | undefined;
+    const total = totalRow?.n ?? 0;
+    const error = Math.max(0, total - ok);
+    return total > 0 ? { ok, error, total } : null;
+  }, null);
+}
+
 /** fetch_log の status='ok' の最大 ts(ISO文字列)。無ければ null。 */
 export function getLastFetchTs(): string | null {
   return withDb((db) => {

@@ -6,15 +6,32 @@ import { getDashboardData, PANEL_GROUPS } from "@/lib/panels";
 export const dynamic = "force-dynamic";
 
 export default function Home() {
-  const { updatedAt, panels, regime } = getDashboardData();
+  const { updatedAt, fetchHealth, panels, regime } = getDashboardData();
   const byKey = new Map(panels.map((p) => [p.key, p]));
 
   return (
     <main className="min-h-screen bg-[#111217] px-3 py-3 text-[#F5F6F8]">
       <header className="mb-2 flex items-baseline justify-between">
         <h1 className="text-lg font-semibold tracking-wide">Macro Cockpit</h1>
-        <span className="text-[11px] text-[#9DA5B8]">
-          最終更新: {updatedAt ?? "未取得"}
+        <span className="flex items-baseline gap-2 text-[11px] text-[#9DA5B8]">
+          <span>最終更新: {updatedAt ?? "未取得"}</span>
+          {fetchHealth && (
+            // 取得健全性: 最新fetchバッチの ok/全系列。error>0 のみ警告色
+            <span
+              className="rounded-[4px] border border-[#2C3235] px-1.5 py-px font-mono [font-variant-numeric:tabular-nums]"
+              style={
+                fetchHealth.error > 0
+                  ? {
+                      color: "#F2CC0C",
+                      backgroundColor: "rgba(242, 204, 12, 0.12)",
+                      borderColor: "transparent",
+                    }
+                  : undefined
+              }
+            >
+              {fetchHealth.ok}/{fetchHealth.total} ok
+            </span>
+          )}
         </span>
       </header>
 
