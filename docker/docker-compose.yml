@@ -32,11 +32,18 @@ services:
       dockerfile: docker/web.Dockerfile
     image: macro-cockpit-web
     ports:
-      # ホスト側ポートは MACRO_WEB_PORT で上書き可能(既定 37414。コンテナ内部は
-      # 3000 のまま)。${...} の展開は docker/.env またはシェル環境変数から行われる
-      # (compose はこのファイルと同じディレクトリの .env を読む。リポジトリ直下の
-      # .env は fetcher/scheduler の env_file 用で、compose 変数展開には使われない)。
-      - "${MACRO_WEB_PORT:-37414}:3000"
+      # 127.0.0.1 に限定してバインドする(セキュリティ上必須)。個人用ダッシュ
+      # ボードを外部公開する手段は Cloudflare Tunnel 等のリバースプロキシに
+      # 一本化し、Docker 自身がホストの全インターフェース(0.0.0.0)に直接公開
+      # しないようにする。cloudflared は同一ホストから localhost 経由で接続する
+      # 前提(別コンテナで動かす場合は同一 Docker ネットワークに参加させ、
+      # http://web:3000 を向けること)。
+      # ホスト側ポート番号は MACRO_WEB_PORT で上書き可能(既定 37414。コンテナ内部
+      # は 3000 のまま)。${...} の展開は docker/.env またはシェル環境変数から行わ
+      # れる(compose はこのファイルと同じディレクトリの .env を読む。リポジトリ
+      # 直下の .env は fetcher/scheduler の env_file 用で、compose 変数展開には
+      # 使われない)。
+      - "127.0.0.1:${MACRO_WEB_PORT:-37414}:3000"
     volumes:
       # web は蓄積データを読み取り専用でマウントする(書き込みは scheduler/fetcher だけ)。
       - ../data:/app/data:ro
