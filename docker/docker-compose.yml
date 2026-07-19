@@ -2,10 +2,14 @@
 # Macro Cockpit — Docker Compose
 #
 # 使い方(リポジトリ直下から。Makefile のターゲット経由が簡単):
-#   make docker-build   # 両イメージをビルド(web + fetcher)
-#   make docker-fetch   # 1回だけ取得(ワンショット。常駐しない = SPEC §3)
-#   make docker-up      # web をバックグラウンド起動 -> http://localhost:3000
+#   make docker-build   # イメージをビルド(web + fetcher/scheduler 共有イメージ)
+#   make docker-fetch   # 1回だけ取得(ワンショット。手動実行用)
+#   make docker-up      # web + scheduler を常駐起動 -> http://localhost:37414
 #   make docker-down    # 停止・後片付け
+#
+# 定期取得は scheduler サービス(常駐)が毎日 FETCH_AT に行うため cron は不要。
+# SPEC §3 の「常駐なし」は、Docker 運用ではユーザー指示により scheduler 常駐へ
+# 意図的に変更した(README「Docker での起動」参照)。
 #
 # 直接叩く場合はいずれも:
 #   docker compose -f docker/docker-compose.yml <cmd>
@@ -28,9 +32,13 @@ services:
       dockerfile: docker/web.Dockerfile
     image: macro-cockpit-web
     ports:
-      - "3000:3000"
+      # ホスト側ポートは MACRO_WEB_PORT で上書き可能(既定 37414。コンテナ内部は
+      # 3000 のまま)。${...} の展開は docker/.env またはシェル環境変数から行われる
+      # (compose はこのファイルと同じディレクトリの .env を読む。リポジトリ直下の
+      # .env は fetcher/scheduler の env_file 用で、compose 変数展開には使われない)。
+      - "${MACRO_WEB_PORT:-37414}:3000"
     volumes:
-      # web は蓄積データを読み取り専用でマウントする(書き込みは fetcher だけ)。
+      # web は蓄積データを読み取り専用でマウントする(書き込みは scheduler/fetcher だけ)。
       - ../data:/app/data:ro
       # regime.yaml も読むだけ。ホスト側を編集してブラウザ再読込で反映される
       # (web の WORKDIR は /app/web。lib/panels.ts は ../config/regime.yaml を読む)。
@@ -40,7 +48,38 @@ services:
       TZ: Asia/Tokyo
     restart: unless-stopped
 
-  # --- 取得バッチ(Python/uv)。常駐しない(profiles で up 対象から外す)-----------
+  # --- 常駐スケジューラ。毎日 FETCH_AT に全系列を取得(cron 不要)----------------
+  # fetcher と同一イメージ(macro-cockpit-fetcher)を共有し、command だけ
+  # 差し替えて python -m fetcher.scheduler を常駐させる(ビルドは実質1回)。
+  scheduler:
+    build:
+      context: ..
+      dockerfile: docker/fetcher.Dockerfile
+    image: macro-cockpit-fetcher
+    command: ["uv", "run", "--frozen", "python", "-m", "fetcher.scheduler"]
+    env_file:
+      - ../.env
+    volumes:
+      # scheduler(内部で fetcher.main を実行)は data/ に書き込む(UPSERT)。
+      - ../data:/app/data
+    environment:
+      MACRO_DB_PATH: /app/data/macro.sqlite
+      TZ: Asia/Tokyo
+      # 毎日の取得時刻(HH:MM、Asia/Tokyo)。ホスト環境変数 or docker/.env で
+      # 上書き可能。取引システムに影響しない時間帯を選ぶこと(SPEC §4.4)。
+      FETCH_AT: "${FETCH_AT:-06:30}"
+      # 起動直後にも1回取得する(既定)。"0" で無効化。
+      # 注意: 起動時取得は FETCH_AT と違い時刻を選ばない。restart: unless-stopped
+      # のためホスト/デーモン再起動やクラッシュ復帰でも即実行され、IB 一次ソース
+      # 環境では取引セッション中にワンショット接続が走り得る。IB を一次ソースに
+      # する場合は FETCH_ON_START=0 を推奨(SPEC §4.4、README「起動直後の取得」)。
+      FETCH_ON_START: "${FETCH_ON_START:-1}"
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    restart: unless-stopped
+    # profiles は付けない = docker compose up で web と一緒に常駐起動する。
+
+  # --- 取得バッチ(手動ワンショット用。profiles で up 対象から外す)---------------
   fetcher:
     build:
       context: ..
@@ -59,5 +98,6 @@ services:
     # TWS / IB Gateway に届くようにする(.env の IB_HOST=host.docker.internal と整合)。
     extra_hosts:
       - "host.docker.internal:host-gateway"
-    # SPEC §3(常駐なし)。up では起動せず、docker compose run --rm fetcher で1回実行する。
+    # up では起動せず、docker compose run --rm fetcher で1回実行する(手動用)。
+    # 定期取得は scheduler サービスが担う。
     profiles: ["fetch"]

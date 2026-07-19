@@ -6,7 +6,9 @@
 # uv 公式イメージに Python 3.12 を同梱。依存(pandas/requests/python-dotenv/
 # yfinance/ib_async)はすべて manylinux/pure-python の wheel なのでコンパイラ層は不要。
 #
-# 常駐しない(SPEC §3)。実行は docker compose run --rm fetcher(1回=ワンショット)。
+# このイメージは2つのサービスで共有する:
+#   - fetcher:   ワンショット取得(docker compose run --rm fetcher。既定 CMD)
+#   - scheduler: 常駐スケジューラ(compose 側で command を fetcher.scheduler に差し替え)
 # .env はイメージに COPY しない。秘密情報は env_file(../.env)で環境変数として渡る。
 # main.py の load_dotenv は .env ファイルが無ければ no-op で、既存の環境変数を
 # 上書きしないため、env_file で渡した値がそのまま使われる。

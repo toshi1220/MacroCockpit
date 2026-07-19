@@ -14,7 +14,7 @@ pnpm dev
 bun dev
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+Open [http://localhost:37414](http://localhost:37414) with your browser to see the result (this project pins the dev port via `make dev`; override with `MACRO_WEB_PORT`).
 
 You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
 

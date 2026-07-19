@@ -14,8 +14,9 @@ init:
 fetch:
 	cd fetcher && uv run python -m fetcher.main
 
+# 開発サーバ。ポートは Docker 運用と同じ 37414 に統一(MACRO_WEB_PORT で上書き可)。
 dev:
-	cd web && npm run dev
+	cd web && PORT=$${MACRO_WEB_PORT:-37414} npm run dev
 
 test:
 	cd fetcher && uv run pytest
@@ -26,14 +27,17 @@ test:
 docker-build:
 	$(COMPOSE) --profile fetch build
 
-# ダッシュボード(web)をバックグラウンド起動 -> http://localhost:3000
+# ダッシュボード(web)+ 常駐スケジューラ(scheduler)をバックグラウンド起動。
+# scheduler が毎日 FETCH_AT(既定 06:30 JST)に全系列を取得するので cron は不要。
 docker-up:
-	$(COMPOSE) up -d web
+	$(COMPOSE) up -d web scheduler
+	@echo "web:       http://localhost:$${MACRO_WEB_PORT:-37414} (docker/.env で変更した場合はそちらの値)"
+	@echo "scheduler: 常駐中(毎日 FETCH_AT=$${FETCH_AT:-06:30} JST に取得。cron 不要。docker/.env での変更も同様)"
 
 # 停止・後片付け。
 docker-down:
 	$(COMPOSE) down
 
-# 全系列を1回だけ取得(ワンショット。常駐しない = SPEC §3)。cron からもこの形で叩く。
+# 全系列を1回だけ取得(手動ワンショット。定期取得は scheduler が担う)。
 docker-fetch:
 	$(COMPOSE) run --rm fetcher

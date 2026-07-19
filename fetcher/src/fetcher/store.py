@@ -48,6 +48,9 @@ def connect(db_path) -> sqlite3.Connection:
     path = Path(db_path)
     path.parent.mkdir(parents=True, exist_ok=True)
     conn = sqlite3.connect(str(path))
+    # scheduler常駐と手動 make fetch の書き込みが重なり得るため、ロック競合は
+    # 即エラーにせず最大30秒待つ(UPSERTなので待てば必ず整合する)
+    conn.execute("PRAGMA busy_timeout = 30000")
     conn.executescript(SCHEMA)
     conn.commit()
     return conn
